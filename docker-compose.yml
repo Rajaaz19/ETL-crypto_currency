@@ -260,18 +260,48 @@ services:
       - |
         mkdir -p /home/spark/.ivy2/cache /home/spark/.ivy2/jars &&
         chmod -R 777 /home/spark/.ivy2 &&
+        pip install psycopg2-binary -q &&
+        echo "Ready — waiting for trigger file at /opt/spark-jobs/.analytics_trigger" &&
         while true; do
-          echo "Waiting for trigger..."
-          sleep 300
+          if [ -f /opt/spark-jobs/.analytics_trigger ]; then
+            rm -f /opt/spark-jobs/.analytics_trigger
+            echo "Trigger received — starting analytics job..."
             /opt/spark/bin/spark-submit \
-            --master local[2] \
-            --driver-memory 2g \
-            --conf spark.driver.memoryOverhead=512 \
-            --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.postgresql:postgresql:42.7.5 \
-            /opt/spark-jobs/analytics.py
+              --master local[2] \
+              --driver-memory 2g \
+              --conf spark.driver.memoryOverhead=512 \
+              --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.postgresql:postgresql:42.7.5 \
+              /opt/spark-jobs/analytics.py
+          fi
+          sleep 10
         done
     restart: on-failure
     
+
+  dashboard-api:
+    build: ./dashboard/api
+    container_name: dashboard-api
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    restart: on-failure
+
+  dashboard-ui:
+    build: ./dashboard/ui
+    container_name: dashboard-ui
+    ports:
+      - "3000:80"
+    depends_on:
+      - dashboard-api
+    restart: on-failure
 
 volumes:
  pgdata:
